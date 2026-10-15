@@ -13,8 +13,8 @@ export function AdminGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>('checking');
   const [error, setError] = useState<string | null>(null);
 
-  const validate = async (key: string) => {
-    if (key) setAdminKey(key);
+  const validate = async (key: string, { silent = false }: { silent?: boolean } = {}) => {
+    setAdminKey(key);
     try {
       await signageClient.listScreens();
       setState('authorized');
@@ -22,7 +22,9 @@ export function AdminGate({ children }: { children: ReactNode }) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error';
       if (message.toLowerCase().includes('unauthorized')) {
-        setError('Clave incorrecta');
+        // Don't scold the user on the automatic first check when no key was
+        // provided yet; only show the error after an actual attempt.
+        setError(silent && !key ? null : 'Clave incorrecta');
       } else {
         setError(message);
       }
@@ -31,7 +33,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    void validate(getAdminKey());
+    void validate(getAdminKey(), { silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

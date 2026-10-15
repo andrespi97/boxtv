@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BrandConfig, CarouselItem, MainContent } from '@/shared/types/signage';
-import { withAlpha } from '@/shared/color';
+import { isSafeImageUrl, withAlpha } from '@/shared/color';
 import { useTimer } from '@/shared/hooks/useTimer';
 import { MediaFrame } from './MediaFrame';
 import { TimerView } from './TimerView';
@@ -25,7 +25,7 @@ export function MainStage({ main, brand }: MainStageProps) {
           }}
         />
       )}
-      {brand.background === 'image' && brand.backgroundUrl && (
+      {brand.background === 'image' && brand.backgroundUrl && isSafeImageUrl(brand.backgroundUrl) && (
         <>
           <img
             src={brand.backgroundUrl}

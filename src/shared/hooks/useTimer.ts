@@ -28,3 +28,16 @@ export function useTimer(timer: TimerState | null): TimerView | null {
 
   return view;
 }
+
+/**
+ * True while a timer is actively counting (running/paused and not yet expired).
+ * Reuses the same local computation as the TV so the admin panel and the ad bar
+ * agree with what is on screen, instead of trusting the stale server `status`
+ * (the server never auto-finishes a timer).
+ */
+export function useTimerActive(timer: TimerState | null): boolean {
+  const view = useTimer(timer);
+  if (!timer) return false;
+  if (timer.status !== 'running' && timer.status !== 'paused') return false;
+  return view?.phase !== 'finished';
+}

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAdminScreens } from '@/admin/hooks/useAdminScreens';
+import { tvPath } from '@/shared/api/signageClient';
 import { Button } from '@/admin/components/ui';
 import { formatRelative } from '@/admin/components/StatusPanel';
 
@@ -54,7 +55,7 @@ export function Dashboard() {
               </div>
               <div className="flex shrink-0 gap-2">
                 <a
-                  href={`/tv/${screen.id}`}
+                  href={tvPath(screen.id)}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5"

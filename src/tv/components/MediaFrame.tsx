@@ -7,8 +7,6 @@ type MediaFrameProps = {
   fit?: ImageFit;
   alt?: string;
   className?: string;
-  /** Called once the browser knows the natural image dimensions. */
-  onDimensions?: (size: { width: number; height: number }) => void;
 };
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -25,7 +23,6 @@ export function MediaFrame({
   fit = 'contain',
   alt = '',
   className = '',
-  onDimensions,
 }: MediaFrameProps) {
   const [state, setState] = useState<LoadState>(url && isSafeImageUrl(url) ? 'loading' : 'error');
 
@@ -33,12 +30,8 @@ export function MediaFrame({
     setState(url && isSafeImageUrl(url) ? 'loading' : 'error');
   }, [url]);
 
-  const handleLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleLoad = () => {
     setState('ready');
-    const img = event.currentTarget;
-    if (onDimensions && img.naturalWidth && img.naturalHeight) {
-      onDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-    }
   };
 
   if (!url || !isSafeImageUrl(url)) {

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { AdminCommand, Screen } from '@/shared/types/signage';
+import type { AdminCommand, MainContent, Screen } from '@/shared/types/signage';
 import { useAdminScreen } from '@/admin/hooks/useAdminScreen';
 import { useAdminScreens } from '@/admin/hooks/useAdminScreens';
+import { tvPath } from '@/shared/api/signageClient';
 import { Preview } from '@/admin/components/Preview';
 import { MainEditor } from '@/admin/components/MainEditor';
 import { TimerEditor } from '@/admin/components/TimerEditor';
@@ -12,6 +13,13 @@ import { StatusPanel } from '@/admin/components/StatusPanel';
 import { Button, TextInput } from '@/admin/components/ui';
 
 type Tab = 'main' | 'brand' | 'ads' | 'timer' | 'status';
+
+/** Editable screen fields that map 1:1 to an admin command. */
+type EditableField = 'main' | 'brand' | 'ads' | 'name';
+
+function isEditableField(field: string): field is EditableField {
+  return field === 'main' || field === 'brand' || field === 'ads' || field === 'name';
+}
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'main', label: 'Contenido' },
@@ -26,33 +34,66 @@ export function ScreenEditor() {
   const { screen, status, pending, error, send } = useAdminScreen(screenId);
   const { data: allScreens } = useAdminScreens();
   const [draft, setDraft] = useState<Screen | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [dirtyFields, setDirtyFields] = useState<Set<EditableField>>(() => new Set());
   const [tab, setTab] = useState<Tab>('main');
+  const dirty = dirtyFields.size > 0;
 
   // Keep the local draft in sync with the server while there are no edits.
+  // Intentionally keyed only on `screen`: when a publish clears the dirty flags
+  // we must not immediately overwrite the freshly published draft with the
+  // (possibly stale) `screen` still held by the socket.
   useEffect(() => {
     if (screen && !dirty) setDraft(screen);
-  }, [screen, dirty]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
 
   const patch = (partial: Partial<Screen>) => {
     setDraft((current) => (current ? { ...current, ...partial } : current));
-    setDirty(true);
+    setDirtyFields((current) => {
+      const next = new Set(current);
+      for (const field of Object.keys(partial)) {
+        if (isEditableField(field)) next.add(field);
+      }
+      return next;
+    });
   };
 
   const publish = async () => {
     if (!draft) return;
-    await send({ type: 'SET_MAIN', content: draft.main });
-    await send({ type: 'SET_BRAND', brand: draft.brand });
-    await send({ type: 'SET_ADS', ads: draft.ads });
-    if (screen && draft.name !== screen.name) {
-      await send({ type: 'SET_SCREEN_NAME', name: draft.name });
+
+    // Only publish the fields the user actually touched, so an unrelated edit
+    // never overwrites a timer (or other main content) that changed meanwhile.
+    const commands: AdminCommand[] = [];
+    if (dirtyFields.has('main')) {
+      // A running timer owns its own live state on the server; the draft only
+      // carries a placeholder, so keep the server timer (same as the preview).
+      const content: MainContent =
+        draft.main.type === 'timer' && screen?.main.type === 'timer'
+          ? { type: 'timer', timer: screen.main.timer }
+          : draft.main;
+      commands.push({ type: 'SET_MAIN', content });
     }
-    setDirty(false);
+    if (dirtyFields.has('brand')) commands.push({ type: 'SET_BRAND', brand: draft.brand });
+    if (dirtyFields.has('ads')) commands.push({ type: 'SET_ADS', ads: draft.ads });
+    if (dirtyFields.has('name') && (!screen || draft.name !== screen.name)) {
+      commands.push({ type: 'SET_SCREEN_NAME', name: draft.name });
+    }
+
+    let latest: Screen | null = null;
+    for (const command of commands) {
+      const result = await send(command);
+      if (!result) return; // leave the edits flagged as unsaved
+      latest = result;
+    }
+    // Adopt the server's authoritative copy so the UI never reverts while the
+    // socket echo is in flight (or when the admin socket is disconnected).
+    if (latest) setDraft(latest);
+    setDirtyFields(new Set());
   };
 
   const discard = () => {
     if (screen) setDraft(screen);
-    setDirty(false);
+    setDirtyFields(new Set());
   };
 
   const handleTimerCommand = (command: AdminCommand) => {
@@ -112,7 +153,7 @@ export function ScreenEditor() {
             {status === 'open' ? 'En vivo' : status === 'connecting' ? 'Conectando' : 'Sin conexión'}
           </span>
           <a
-            href={`/tv/${draft.id}`}
+            href={tvPath(draft.id)}
             target="_blank"
             rel="noreferrer"
             className="hidden rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 sm:block"
@@ -131,7 +172,7 @@ export function ScreenEditor() {
             </p>
             <Preview screen={previewScreen} />
             <div className="mt-2 flex justify-between text-xs text-slate-500">
-              <span>Zona principal 80%</span>
+              <span>Cabecera 10% · Principal 70%</span>
               <span>Publicidad 20%</span>
             </div>
           </div>

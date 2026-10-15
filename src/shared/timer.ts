@@ -108,6 +108,20 @@ export function computeTimerView(timer: TimerState, now: number = Date.now()): T
 
   // amrap / countdown share the same shape: count from 0 to workSeconds.
   const total = Math.max(0, timer.workSeconds);
+
+  // Mirror the intervals behaviour: once the time is up, report "finished" so
+  // the TV shows "FIN" instead of freezing at 00:00 with a full progress bar.
+  if (total > 0 && elapsed >= total) {
+    return {
+      ...base,
+      phase: 'finished',
+      remaining: 0,
+      phaseTotal: total,
+      progress: 1,
+      label: 'FIN',
+    };
+  }
+
   const capped = Math.min(elapsed, total);
   const remaining = Math.max(0, total - capped);
   return {
@@ -118,11 +132,4 @@ export function computeTimerView(timer: TimerState, now: number = Date.now()): T
     progress: total > 0 ? Math.min(1, capped / total) : 0,
     label: timer.mode === 'amrap' ? 'AMRAP' : 'CUENTA ATRÁS',
   };
-}
-
-export function totalDuration(timer: TimerState): number {
-  if (timer.mode === 'intervals') {
-    return (Math.max(0, timer.workSeconds) + Math.max(0, timer.restSeconds)) * Math.max(1, timer.rounds);
-  }
-  return Math.max(0, timer.workSeconds);
 }

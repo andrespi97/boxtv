@@ -158,8 +158,8 @@ Pantallas creadas automáticamente: `wod`, `entrada`, `sala-2`.
 | `cover`     | Rellena el marco recortando bordes.                   |
 | `blur-fill` | Copia ampliada y desenfocada detrás + imagen centrada.|
 
-Solo se aceptan URLs HTTPS; se avisa si la URL no es válida y se registran las
-dimensiones reales cuando el navegador las conoce.
+Solo se aceptan URLs HTTPS o rutas relativas al sitio (se rechazan las URLs
+protocol-relative `//…`); se avisa en el panel si la URL no es válida.
 
 ---
 

@@ -7,7 +7,6 @@
     "dev": "cf dev",
     "typecheck": "cf workers types && tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
     "build": "npm run typecheck && cf build",
-    "preview": "vite preview",
     "deploy": "npm run typecheck && cf deploy",
     "cf-typegen": "cf workers types"
   },
