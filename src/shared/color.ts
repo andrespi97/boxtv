@@ -22,9 +22,11 @@ export function withAlpha(hex: string, alpha: number, fallback = '249,115,22'): 
   return `rgba(${channels},${alpha})`;
 }
 
-/** Validates an image URL: must be HTTPS (or a relative path). */
+/** Validates an image URL: must be HTTPS (or a site-relative path). */
 export function isSafeImageUrl(url: string): boolean {
   if (!url) return false;
+  // Reject protocol-relative URLs ("//evil.com/x") which are not site-local.
+  if (url.startsWith('//')) return false;
   if (url.startsWith('/')) return true;
   try {
     const parsed = new URL(url);

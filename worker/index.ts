@@ -1,5 +1,6 @@
 import { GymSignageDO } from './durable/GymSignageDO';
 import { CORS_HEADERS, type Env } from './env';
+import { decodeWsKey } from '../src/shared/wsKey';
 
 export { GymSignageDO };
 
@@ -39,13 +40,28 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   const wsMatch = pathname.match(/^\/api\/ws\/([^/]+)$/);
   if (wsMatch) {
     const role = url.searchParams.get('role') === 'admin' ? 'admin' : 'tv';
-    if (role === 'admin' && !isAuthorized(request, env, url)) {
-      return json({ error: 'Unauthorized' }, 401);
+    const offered = (request.headers.get('Sec-WebSocket-Protocol') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    // Admins authenticate with the key carried as a subprotocol (a header),
+    // never in the URL. The accepted token must be echoed back on the 101.
+    let subprotocol: string | null = null;
+    if (role === 'admin') {
+      if (env.ADMIN_KEY) {
+        const accepted = offered.find((value) => decodeWsKey(value) === env.ADMIN_KEY);
+        if (!accepted) return json({ error: 'Unauthorized' }, 401);
+        subprotocol = accepted;
+      } else {
+        subprotocol = offered[0] ?? null;
+      }
     }
 
     const doUrl = new URL('https://do/ws');
     doUrl.searchParams.set('screenId', decodeURIComponent(wsMatch[1]));
     doUrl.searchParams.set('role', role);
+    if (subprotocol) doUrl.searchParams.set('subprotocol', subprotocol);
     return stub.fetch(doUrl.toString(), request);
   }
 
@@ -61,7 +77,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   // Admin: list all screens + live statuses.
   if (pathname === '/api/screens' && request.method === 'GET') {
-    if (!isAuthorized(request, env, url)) return json({ error: 'Unauthorized' }, 401);
+    if (!isAuthorized(request, env)) return json({ error: 'Unauthorized' }, 401);
     const res = await stub.fetch('https://do/screens');
     const body = await res.json();
     return json(body, res.status);
@@ -70,7 +86,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   // Admin: send a command to a screen.
   const cmdMatch = pathname.match(/^\/api\/screens\/([^/]+)\/command$/);
   if (cmdMatch && request.method === 'POST') {
-    if (!isAuthorized(request, env, url)) return json({ error: 'Unauthorized' }, 401);
+    if (!isAuthorized(request, env)) return json({ error: 'Unauthorized' }, 401);
     const payload = await request.text();
     const doUrl = new URL('https://do/command');
     doUrl.searchParams.set('screenId', decodeURIComponent(cmdMatch[1]));
@@ -86,11 +102,10 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   return json({ error: 'Not found' }, 404);
 }
 
-function isAuthorized(request: Request, env: Env, url: URL): boolean {
+/** HTTP admin endpoints authenticate with the `X-Admin-Key` header only. */
+function isAuthorized(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return true; // no key configured -> open (dev)
-  const headerKey = request.headers.get('x-admin-key');
-  const queryKey = url.searchParams.get('key');
-  return headerKey === env.ADMIN_KEY || queryKey === env.ADMIN_KEY;
+  return request.headers.get('x-admin-key') === env.ADMIN_KEY;
 }
 
 function json(data: unknown, status = 200): Response {

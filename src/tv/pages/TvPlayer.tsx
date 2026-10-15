@@ -1,11 +1,10 @@
-import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import type { CSSProperties } from 'react';
 import { useScreenSocket } from '@/shared/hooks/useScreenSocket';
 import { useNightlyRefresh } from '@/shared/hooks/useNightlyRefresh';
 import { useFullscreen } from '@/shared/hooks/useFullscreen';
 import { useIdleCursor } from '@/shared/hooks/useIdleCursor';
-import { toRgbChannels } from '@/shared/color';
+import { useTimerActive } from '@/shared/hooks/useTimer';
 import { HeaderBar } from '@/tv/components/HeaderBar';
 import { MainStage } from '@/tv/components/MainStage';
 import { AdBar } from '@/tv/components/AdBar';
@@ -17,21 +16,11 @@ export function TvPlayer() {
   const { isFullscreen, toggle } = useFullscreen();
   useNightlyRefresh(3);
 
-  const timerRunning =
-    screen?.main.type === 'timer' &&
-    (screen.main.timer.status === 'running' || screen.main.timer.status === 'paused');
-
-  const brandVars = useMemo<CSSProperties>(() => {
-    if (!screen) return {};
-    return {
-      '--brand-primary': toRgbChannels(screen.brand.primaryColor),
-      '--brand-secondary': toRgbChannels(screen.brand.secondaryColor),
-    } as CSSProperties;
-  }, [screen]);
+  const activeTimer = screen?.main.type === 'timer' ? screen.main.timer : null;
+  const timerRunning = useTimerActive(activeTimer);
 
   // Brand background fallback if the screen has no background configured.
   const rootStyle: CSSProperties = {
-    ...brandVars,
     background: screen?.brand.background === 'black' ? '#000' : undefined,
   };
 

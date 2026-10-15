@@ -5,3 +5,6 @@ dist
 *.local
 .DS_Store
 .env
+.cloudflare
+result.json
+src/result.json

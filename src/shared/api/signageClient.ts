@@ -1,21 +1,18 @@
-import type { AdminCommand, Screen, ScreenRuntimeStatus } from '../types/signage';
+import type { AdminCommand, GymStatus, Screen } from '../types/signage';
+import { encodeWsKey } from '../wsKey';
 
 const ADMIN_KEY_STORAGE = 'signage.adminKey';
 const GYM_STORAGE = 'signage.gymId';
 
 /**
- * Optional API origin. When empty the app talks to its own origin (production).
- * In development `.env.development` points it straight at `wrangler dev`
- * (http://localhost:8787) so WebSockets don't go through Vite's proxy.
+ * Optional API origin. When empty the app talks to its own origin, which is
+ * both production and `cf dev` (the Cloudflare Vite plugin serves the client
+ * and the Worker together). Can still be overridden with `VITE_API_ORIGIN`.
  */
 const API_ORIGIN = ((import.meta.env.VITE_API_ORIGIN as string | undefined) ?? '').replace(
   /\/$/,
   '',
 );
-
-export function getApiOrigin(): string {
-  return API_ORIGIN;
-}
 
 export function getAdminKey(): string {
   try {
@@ -47,7 +44,21 @@ export function setGymId(gymId: string): void {
     if (gymId) localStorage.setItem(GYM_STORAGE, gymId);
     else localStorage.removeItem(GYM_STORAGE);
   } catch {
-    // ignore
+    // ignore storage failures (private mode)
+  }
+}
+
+/**
+ * Persists a `?gym=` coming from the URL (e.g. a TV link handed to a device
+ * with no stored gym) so every API/WS request keeps targeting the same gym.
+ * Called once at startup.
+ */
+export function adoptGymFromUrl(): void {
+  try {
+    const gym = new URLSearchParams(window.location.search).get('gym');
+    if (gym) setGymId(gym);
+  } catch {
+    // ignore (no window / private mode)
   }
 }
 
@@ -57,6 +68,11 @@ function withGym(url: string): string {
   const u = new URL(url, window.location.origin);
   u.searchParams.set('gym', gym);
   return u.pathname + u.search;
+}
+
+/** Site-relative URL of a TV player, preserving the configured gym. */
+export function tvPath(screenId: string): string {
+  return withGym(`/tv/${encodeURIComponent(screenId)}`);
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -76,27 +92,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const signageClient = {
-  health() {
-    return request<{ ok: boolean; ts: number }>('/api/health');
-  },
-
-  getScreen(screenId: string) {
-    return request<{ screen: Screen }>(`/api/screen/${encodeURIComponent(screenId)}`);
-  },
-
   listScreens() {
-    return request<{
-      gymId: string;
-      updatedAt: number;
-      screens: Screen[];
-      statuses: ScreenRuntimeStatus[];
-    }>('/api/screens');
+    return request<GymStatus>('/api/screens');
   },
 
   sendCommand(screenId: string, command: AdminCommand) {
     return request<{ ok: boolean; screen: Screen }>(
       `/api/screens/${encodeURIComponent(screenId)}/command`,
-      { method: 'POST', body: JSON.stringify({ screenId, command }) },
+      { method: 'POST', body: JSON.stringify({ command }) },
     );
   },
 };
@@ -106,9 +109,15 @@ export function wsUrl(screenId: string, role: 'tv' | 'admin'): string {
   const url = new URL(withGym(`/api/ws/${encodeURIComponent(screenId)}`), origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.searchParams.set('role', role);
-  if (role === 'admin') {
-    const key = getAdminKey();
-    if (key) url.searchParams.set('key', key);
-  }
   return url.toString();
+}
+
+/**
+ * WebSocket subprotocols offered during the handshake. Admins pass the shared
+ * key here (as a header) instead of in the URL, where it would be logged.
+ */
+export function wsProtocols(role: 'tv' | 'admin'): string[] {
+  if (role !== 'admin') return [];
+  const key = getAdminKey();
+  return key ? [encodeWsKey(key)] : [];
 }

@@ -14,11 +14,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["@cloudflare/workers-types"],
+    "types": [],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["worker"]
+  "include": ["worker", "cloudflare.config.ts", ".cloudflare/types"]
 }

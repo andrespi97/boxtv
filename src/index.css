@@ -3,8 +3,6 @@
 @tailwind utilities;
 
 :root {
-  --brand-primary: 249 115 22;
-  --brand-secondary: 14 165 233;
   color-scheme: dark;
 }
 
@@ -113,6 +111,13 @@ body {
 
 .cursor-hidden {
   cursor: none;
+}
+
+/* Admin pages scroll inside this container because `body` is overflow:hidden
+   (needed by the TV player). Without this the mobile panel gets clipped. */
+.admin-scroll {
+  height: 100%;
+  overflow-y: auto;
 }
 
 /* Custom scrollbars in the admin panel */

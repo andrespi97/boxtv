@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Screen, ScreenRuntimeStatus } from '@/shared/types/signage';
+import type { GymStatus } from '@/shared/types/signage';
 import { signageClient } from '@/shared/api/signageClient';
-
-type ScreensResponse = {
-  gymId: string;
-  updatedAt: number;
-  screens: Screen[];
-  statuses: ScreenRuntimeStatus[];
-};
 
 /** Polls the screen list + live connection status for the dashboard. */
 export function useAdminScreens(intervalMs = 10_000) {
-  const [data, setData] = useState<ScreensResponse | null>(null);
+  const [data, setData] = useState<GymStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);

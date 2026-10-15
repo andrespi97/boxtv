@@ -10,6 +10,7 @@ import {
   DEFAULT_SCREEN_IDS,
   timerFromConfig,
 } from '../../src/shared/defaults';
+import { parseAdminCommand } from '../commandValidation';
 
 interface Env {
   DEFAULT_GYM_ID?: string;
@@ -56,7 +57,7 @@ export class GymSignageDO implements DurableObject {
       case 'GET /screens':
         return this.handleListScreens();
       case 'POST /command':
-        return this.handleCommand(request);
+        return this.handleCommand(url, request);
       default:
         return json({ error: 'Not found', route }, 404);
     }
@@ -69,6 +70,7 @@ export class GymSignageDO implements DurableObject {
     const role: ConnectionRole = url.searchParams.get('role') === 'admin' ? 'admin' : 'tv';
 
     const screen = await this.getOrCreateScreen(screenId);
+    const subprotocol = url.searchParams.get('subprotocol');
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -84,7 +86,12 @@ export class GymSignageDO implements DurableObject {
 
     this.send(server, { type: 'STATE_SYNC', screen });
 
-    return new Response(null, { status: 101, webSocket: client });
+    // Echo the accepted subprotocol so the browser completes the handshake.
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+      headers: subprotocol ? { 'Sec-WebSocket-Protocol': subprotocol } : undefined,
+    });
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -116,8 +123,8 @@ export class GymSignageDO implements DurableObject {
     }
 
     if (attachment.role === 'admin' && typeof msg.type === 'string') {
-      const command = parsed as AdminCommand;
-      await this.dispatchCommand(attachment.screenId, command);
+      const command = parseAdminCommand(parsed);
+      if (command) await this.dispatchCommand(attachment.screenId, command);
     }
   }
 
@@ -139,12 +146,18 @@ export class GymSignageDO implements DurableObject {
 
   // ------------------------------- Commands --------------------------------
 
-  private async handleCommand(request: Request): Promise<Response> {
-    const body = (await request.json()) as { screenId?: string; command?: AdminCommand };
-    if (!body.screenId || !body.command) {
-      return json({ error: 'screenId and command are required' }, 400);
+  private async handleCommand(url: URL, request: Request): Promise<Response> {
+    const body = (await request.json()) as { screenId?: unknown; command?: unknown };
+    // The screen id in the URL (set by the Worker from the request path) is the
+    // source of truth; the body field is only a fallback.
+    const screenId =
+      url.searchParams.get('screenId') ??
+      (typeof body.screenId === 'string' ? body.screenId : null);
+    const command = parseAdminCommand(body.command);
+    if (!screenId || !command) {
+      return json({ error: 'screenId and a valid command are required' }, 400);
     }
-    const { screen } = await this.dispatchCommand(body.screenId, body.command);
+    const { screen } = await this.dispatchCommand(screenId, command);
     return json({ ok: true, screen });
   }
 
@@ -159,27 +172,27 @@ export class GymSignageDO implements DurableObject {
     switch (command.type) {
       case 'SET_BRAND':
         screen.brand = command.brand;
-        events.push({ type: 'BRAND_CHANGED', brand: command.brand });
+        events.push({ type: 'BRAND_CHANGED', brand: command.brand, updatedAt: now });
         break;
 
       case 'SET_MAIN':
         screen.main = command.content;
-        events.push({ type: 'CONTENT_CHANGED', main: command.content });
+        events.push({ type: 'CONTENT_CHANGED', main: command.content, updatedAt: now });
         if (command.content.type === 'timer') {
-          events.push({ type: 'TIMER_CHANGED', timer: command.content.timer });
+          events.push({ type: 'TIMER_CHANGED', timer: command.content.timer, updatedAt: now });
         }
         break;
 
       case 'SET_ADS':
         screen.ads = command.ads;
-        events.push({ type: 'ADS_CHANGED', ads: command.ads });
+        events.push({ type: 'ADS_CHANGED', ads: command.ads, updatedAt: now });
         break;
 
       case 'START_TIMER': {
         const timer = timerFromConfig(command.config, now);
         screen.main = { type: 'timer', timer };
-        events.push({ type: 'TIMER_CHANGED', timer });
-        events.push({ type: 'CONTENT_CHANGED', main: screen.main });
+        events.push({ type: 'TIMER_CHANGED', timer, updatedAt: now });
+        events.push({ type: 'CONTENT_CHANGED', main: screen.main, updatedAt: now });
         break;
       }
 
@@ -189,35 +202,49 @@ export class GymSignageDO implements DurableObject {
       case 'RESET_TIMER': {
         if (screen.main.type !== 'timer') break;
         const timer = { ...screen.main.timer };
+        let changed = false;
         if (command.type === 'PAUSE_TIMER' && timer.status === 'running') {
           timer.status = 'paused';
           timer.pausedAt = now;
+          changed = true;
         } else if (command.type === 'RESUME_TIMER' && timer.status === 'paused') {
           if (timer.pausedAt && timer.startedAt) {
             timer.startedAt += now - timer.pausedAt;
           }
           timer.pausedAt = null;
           timer.status = 'running';
-        } else if (command.type === 'STOP_TIMER') {
+          changed = true;
+        } else if (
+          command.type === 'STOP_TIMER' &&
+          (timer.status === 'running' || timer.status === 'paused')
+        ) {
           timer.status = 'finished';
           timer.pausedAt = null;
-        } else if (command.type === 'RESET_TIMER') {
+          changed = true;
+        } else if (command.type === 'RESET_TIMER' && timer.status !== 'idle') {
           timer.status = 'idle';
           timer.startedAt = null;
           timer.pausedAt = null;
           timer.currentRound = 1;
+          changed = true;
         }
+        // A no-op timer command (e.g. pausing an idle timer) changes nothing.
+        if (!changed) break;
         screen.main = { type: 'timer', timer };
-        events.push({ type: 'TIMER_CHANGED', timer });
-        events.push({ type: 'CONTENT_CHANGED', main: screen.main });
+        events.push({ type: 'TIMER_CHANGED', timer, updatedAt: now });
+        events.push({ type: 'CONTENT_CHANGED', main: screen.main, updatedAt: now });
         break;
       }
 
       case 'SET_SCREEN_NAME':
         screen.name = command.name;
-        events.push({ type: 'SCREEN_NAME_CHANGED', name: command.name });
+        events.push({ type: 'SCREEN_NAME_CHANGED', name: command.name, updatedAt: now });
         break;
     }
+
+    // Ignore unknown commands and no-ops (e.g. pausing an idle timer) so they
+    // don't bump `updatedAt` or rewrite storage.
+    if (events.length === 0) return { screen, events };
 
     screen.updatedAt = now;
     await this.saveScreen(screen);

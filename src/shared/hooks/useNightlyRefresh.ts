@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 /**
  * Reloads the page every night at 03:00 to free memory on long-running TV
- * browsers. The check runs once a minute and skips if the reload already
+ * browsers. The check runs every 30 seconds and skips if the reload already
  * happened today.
  */
 export function useNightlyRefresh(hour = 3): void {
@@ -10,7 +10,9 @@ export function useNightlyRefresh(hour = 3): void {
     const timer = setInterval(() => {
       const now = new Date();
       const stamp = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
-      if (now.getHours() === hour && now.getMinutes() === 0) {
+      // Any tick during the target hour triggers a single reload, so a throttled
+      // background timer that misses 03:00 exactly still refreshes that night.
+      if (now.getHours() === hour) {
         const last = sessionStorage.getItem('signage.lastNightlyRefresh');
         if (last !== stamp) {
           sessionStorage.setItem('signage.lastNightlyRefresh', stamp);

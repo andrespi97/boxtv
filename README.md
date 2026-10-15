@@ -8,6 +8,12 @@ Todo corre sobre **Cloudflare Workers + Static Assets + un Durable Object**, sin
 backend tradicional ni coste adicional. El Worker sirve el build de Vite (rol de
 "Pages") y expone la API/WebSocket en `/api/*`.
 
+> **CLI:** el proyecto usa **`cf`** (el CLI nuevo de Cloudflare) junto con el
+> plugin `@cloudflare/vite-plugin@beta`. La configuración vive en
+> `cloudflare.config.ts` (ya no en `wrangler.jsonc`). `wrangler` se mantiene
+> como dependencia solo para `wrangler tail` y `wrangler secret put`, que la
+> beta de `cf` todavía no cubre.
+
 ---
 
 ## Arquitectura
@@ -50,21 +56,16 @@ npm install
 
 ### Desarrollo
 
-Necesitas dos terminales:
+Un único comando:
 
 ```bash
-# Terminal 1 — Worker + Durable Object (Miniflare) en :8787
-npm run dev:worker
-
-# Terminal 2 — Vite en :5173
-npm run dev
+npm run dev   # cf dev → Vite + plugin de Cloudflare (cliente + Worker + DO)
 ```
 
-En desarrollo, `.env.development` define `VITE_API_ORIGIN=http://localhost:8787`,
-así que el navegador habla **directamente** con `wrangler dev` (API y
-WebSocket) y se evitan los avisos `ws proxy socket error` del proxy de Vite.
-El Worker ya envía las cabeceras CORS necesarias. Si borras esa variable, el
-proxy `/api` de `vite.config.ts` (con soporte WS) sirve como alternativa.
+`cf dev` arranca Vite con el plugin oficial de Cloudflare, que ejecuta el
+Worker (API, WebSocket y Durable Object) y sirve el cliente desde el **mismo
+origen** en http://localhost:5173. Ya no hay dos terminales ni proxy `/api`:
+el plugin enruta `/api/*` al Worker.
 
 Abre:
 
@@ -76,9 +77,12 @@ Abre:
 ### Producción
 
 ```bash
-npm run build      # typecheck + build de Vite a dist/
-npx wrangler deploy
+npm run build      # typecheck + cf build (Build Output en .cloudflare/output/v0)
+npm run deploy     # typecheck + cf deploy
 ```
+
+La primera vez autentícate con `npx cf auth login`. En CI, `cf` también lee
+`CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID`.
 
 Tras el despliegue tendrás algo como:
 
@@ -97,13 +101,20 @@ El panel admite una clave secreta compartida. Si `ADMIN_KEY` no está definida,
 la API queda abierta (útil en local). Para activarla en producción:
 
 ```bash
-npx wrangler secret put ADMIN_KEY
+# Opción cf: sube el secreto junto a un nuevo deploy
+npx cf deploy --secrets-file .secrets.env
+
+# Alternativa mientras `cf` sigue en beta (aún no fija secretos sueltos)
+npx wrangler secret put ADMIN_KEY --name signage-box
 ```
+
+`.secrets.env` es un fichero JSON o `.env` con `ADMIN_KEY=...`; añádelo a
+`.gitignore` y no lo subas al repositorio.
 
 La clave se guarda en `localStorage` del móvil la primera vez que se introduce.
 Las TVs no la necesitan.
 
-Variables opcionales en `wrangler.jsonc`:
+Variables opcionales en `cloudflare.config.ts`:
 
 | Variable         | Por defecto | Descripción                                  |
 | ---------------- | ----------- | -------------------------------------------- |
@@ -147,8 +158,8 @@ Pantallas creadas automáticamente: `wod`, `entrada`, `sala-2`.
 | `cover`     | Rellena el marco recortando bordes.                   |
 | `blur-fill` | Copia ampliada y desenfocada detrás + imagen centrada.|
 
-Solo se aceptan URLs HTTPS; se avisa si la URL no es válida y se registran las
-dimensiones reales cuando el navegador las conoce.
+Solo se aceptan URLs HTTPS o rutas relativas al sitio (se rechazan las URLs
+protocol-relative `//…`); se avisa en el panel si la URL no es válida.
 
 ---
 
@@ -162,14 +173,13 @@ temporizador se compacta (`pauseDuringTimer`) para no competir con el cronómetr
 
 ## Scripts
 
-| Script              | Descripción                                   |
-| ------------------- | --------------------------------------------- |
-| `npm run dev`       | Vite dev server con proxy a la API.           |
-| `npm run dev:worker`| Worker + DO en local (Miniflare).             |
-| `npm run build`     | Typecheck (app + worker) y build a `dist/`.   |
-| `npm run typecheck` | Typecheck de app y worker.                    |
-| `npm run deploy`    | Build + `wrangler deploy`.                    |
-| `npm run cf-typegen`| Genera tipos de bindings de Cloudflare.       |
+| Script              | Descripción                                              |
+| ------------------- | -------------------------------------------------------- |
+| `npm run dev`       | `cf dev`: Vite + plugin de Cloudflare (cliente + Worker).|
+| `npm run build`     | Tipos + typecheck + `cf build` a `.cloudflare/output/v0`.|
+| `npm run typecheck` | `cf workers types` + typecheck de app y worker.          |
+| `npm run deploy`    | Typecheck + `cf deploy`.                                 |
+| `npm run cf-typegen`| `cf workers types`: tipos de bindings.                   |
 
 ---
 

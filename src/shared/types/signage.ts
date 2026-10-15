@@ -84,17 +84,12 @@ export type AdminCommand =
 
 export type TvEvent =
   | { type: 'STATE_SYNC'; screen: Screen }
-  | { type: 'CONTENT_CHANGED'; main: MainContent }
-  | { type: 'ADS_CHANGED'; ads: AdPlaylist }
-  | { type: 'BRAND_CHANGED'; brand: BrandConfig }
-  | { type: 'TIMER_CHANGED'; timer: TimerState }
-  | { type: 'SCREEN_NAME_CHANGED'; name: string }
+  | { type: 'CONTENT_CHANGED'; main: MainContent; updatedAt: number }
+  | { type: 'ADS_CHANGED'; ads: AdPlaylist; updatedAt: number }
+  | { type: 'BRAND_CHANGED'; brand: BrandConfig; updatedAt: number }
+  | { type: 'TIMER_CHANGED'; timer: TimerState; updatedAt: number }
+  | { type: 'SCREEN_NAME_CHANGED'; name: string; updatedAt: number }
   | { type: 'PONG'; ts: number };
-
-/** Messages the client (TV or admin) can send to the server. */
-export type ClientMessage =
-  | { type: 'PING'; ts: number }
-  | { type: 'STATE_REQUEST' };
 
 // ------------------------------- Status ------------------------------------
 
@@ -108,8 +103,10 @@ export type ScreenRuntimeStatus = {
   lastSeen: number | null;
 };
 
+/** List response for the admin dashboard (`GET /api/screens`). */
 export type GymStatus = {
   gymId: string;
-  screens: ScreenRuntimeStatus[];
   updatedAt: number;
+  screens: Screen[];
+  statuses: ScreenRuntimeStatus[];
 };

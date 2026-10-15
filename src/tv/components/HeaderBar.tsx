@@ -1,5 +1,5 @@
 import type { BrandConfig } from '@/shared/types/signage';
-import { withAlpha } from '@/shared/color';
+import { isSafeImageUrl, withAlpha } from '@/shared/color';
 import { useClock } from '@/shared/hooks/useClock';
 
 type HeaderBarProps = {
@@ -27,7 +27,7 @@ export function HeaderBar({ brand, screenName }: HeaderBarProps) {
       }}
     >
       <div className="flex min-w-0 items-center gap-[2cqw]">
-        {brand.logoUrl ? (
+        {brand.logoUrl && isSafeImageUrl(brand.logoUrl) ? (
           <img
             src={brand.logoUrl}
             alt="Logo"

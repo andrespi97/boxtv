@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { AdminCommand, TimerConfig, TimerMode, TimerState } from '@/shared/types/signage';
 import { formatTime } from '@/shared/timer';
+import { useTimer } from '@/shared/hooks/useTimer';
 import { Button, Field, Select, TextInput } from './ui';
 
 type TimerEditorProps = {
@@ -31,7 +32,12 @@ export function TimerEditor({ timer, onCommand, pending }: TimerEditorProps) {
     rounds: Math.max(1, rounds),
   };
 
-  const status = timer?.status ?? 'idle';
+  // The server never flips a timer to `finished`; it only keeps `startedAt`.
+  // Derive it locally (exactly like the TV) so the panel stops showing
+  // "En marcha" once the time has actually run out.
+  const view = useTimer(timer);
+  const rawStatus = timer?.status ?? 'idle';
+  const status = view?.phase === 'finished' ? 'finished' : rawStatus;
 
   return (
     <div className="space-y-4">

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { Screen, TvEvent } from '../types/signage';
-import { wsUrl } from '../api/signageClient';
+import { wsProtocols, wsUrl } from '../api/signageClient';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 
 export type UseScreenSocketResult = {
   screen: Screen | null;
   status: ConnectionStatus;
-  lastSync: number | null;
 };
 
 const BACKOFF_STEPS = [2000, 5000, 10000, 30000, 60000];
@@ -29,7 +28,6 @@ export function useScreenSocket(
     role === 'tv' ? readCachedScreen(screenId) : null,
   );
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
-  const [lastSync, setLastSync] = useState<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !screenId) return;
@@ -42,7 +40,7 @@ export function useScreenSocket(
 
     const connect = () => {
       setStatus('connecting');
-      socket = new WebSocket(wsUrl(screenId, role));
+      socket = new WebSocket(wsUrl(screenId, role), wsProtocols(role));
 
       socket.onopen = () => {
         attempt = 0;
@@ -62,7 +60,6 @@ export function useScreenSocket(
         } catch {
           return;
         }
-        setLastSync(Date.now());
         setScreen((current) => applyEvent(message, current));
       };
 
@@ -107,7 +104,7 @@ export function useScreenSocket(
     if (role === 'tv' && screen) writeCachedScreen(screen);
   }, [role, screen]);
 
-  return { screen, status, lastSync };
+  return { screen, status };
 }
 
 function applyEvent(event: TvEvent, current: Screen | null): Screen | null {
@@ -117,16 +114,16 @@ function applyEvent(event: TvEvent, current: Screen | null): Screen | null {
 
   switch (event.type) {
     case 'CONTENT_CHANGED':
-      return { ...current, main: event.main, updatedAt: Date.now() };
+      return { ...current, main: event.main, updatedAt: event.updatedAt };
     case 'ADS_CHANGED':
-      return { ...current, ads: event.ads, updatedAt: Date.now() };
+      return { ...current, ads: event.ads, updatedAt: event.updatedAt };
     case 'BRAND_CHANGED':
-      return { ...current, brand: event.brand, updatedAt: Date.now() };
+      return { ...current, brand: event.brand, updatedAt: event.updatedAt };
     case 'SCREEN_NAME_CHANGED':
-      return { ...current, name: event.name, updatedAt: Date.now() };
+      return { ...current, name: event.name, updatedAt: event.updatedAt };
     case 'TIMER_CHANGED':
       if (current.main.type !== 'timer') return current;
-      return { ...current, main: { type: 'timer', timer: event.timer }, updatedAt: Date.now() };
+      return { ...current, main: { type: 'timer', timer: event.timer }, updatedAt: event.updatedAt };
     default:
       return current;
   }

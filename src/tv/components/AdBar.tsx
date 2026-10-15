@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AdItem, AdPlaylist, BrandConfig } from '@/shared/types/signage';
-import { withAlpha } from '@/shared/color';
+import { isSafeImageUrl, withAlpha } from '@/shared/color';
 
 type AdBarProps = {
   ads: AdPlaylist;
@@ -69,12 +69,45 @@ function AdContent({
   compact: boolean;
 }) {
   if (item.type === 'image') {
+    if (!isSafeImageUrl(item.url)) {
+      return (
+        <div className="grid h-full w-full place-items-center">
+          <span className="text-sm text-white/50">Imagen no válida (usa HTTPS)</span>
+        </div>
+      );
+    }
+
+    const fit = item.fit ?? 'contain';
+
+    if (fit === 'blur-fill') {
+      return (
+        <div className="relative h-full w-full overflow-hidden">
+          <img
+            src={item.url}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+          />
+          <div className="absolute inset-0 bg-black/40" />
+          <img
+            src={item.url}
+            alt="Publicidad"
+            className="relative z-10 h-full w-full object-contain px-[2cqw] py-[1.5cqh]"
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="flex h-full w-full items-center justify-center px-[2cqw] py-[1.5cqh]">
         <img
           src={item.url}
           alt="Publicidad"
-          className="h-full max-h-full w-auto max-w-[90%] object-contain"
+          className={
+            fit === 'cover'
+              ? 'h-full w-full object-cover'
+              : 'h-full max-h-full w-auto max-w-[90%] object-contain'
+          }
           style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.5))' }}
         />
       </div>

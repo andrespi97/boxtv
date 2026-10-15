@@ -2,31 +2,6 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAt
 import type { ImageFit } from '@/shared/types/signage';
 import { isSafeImageUrl } from '@/shared/color';
 
-export function SectionCard({
-  title,
-  description,
-  children,
-  actions,
-}: {
-  title: string;
-  description?: string;
-  children: ReactNode;
-  actions?: ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 shadow-lg sm:p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-white">{title}</h2>
-          {description && <p className="text-sm text-slate-400">{description}</p>}
-        </div>
-        {actions}
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  );
-}
-
 export function Field({
   label,
   hint,
