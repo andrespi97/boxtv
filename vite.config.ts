@@ -1,28 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { cloudflare } from '@cloudflare/vite-plugin';
 import path from 'node:path';
 
-// The Vite dev server proxies API calls to `wrangler dev` (port 8787)
-// so WebSockets and the Durable Object work in local development.
+// The Cloudflare Vite plugin runs the Worker (API + Durable Object +
+// WebSockets) and serves the client build from the same origin, so no
+// proxy is needed. `cf dev` / `cf build` / `cf deploy` drive this config.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), cloudflare()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(import.meta.dirname, 'src'),
     },
   },
   server: {
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8787',
-        changeOrigin: true,
-        ws: true,
-      },
-    },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
   },
 });

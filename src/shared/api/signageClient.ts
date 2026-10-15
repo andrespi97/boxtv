@@ -4,9 +4,9 @@ const ADMIN_KEY_STORAGE = 'signage.adminKey';
 const GYM_STORAGE = 'signage.gymId';
 
 /**
- * Optional API origin. When empty the app talks to its own origin (production).
- * In development `.env.development` points it straight at `wrangler dev`
- * (http://localhost:8787) so WebSockets don't go through Vite's proxy.
+ * Optional API origin. When empty the app talks to its own origin, which is
+ * both production and `cf dev` (the Cloudflare Vite plugin serves the client
+ * and the Worker together). Can still be overridden with `VITE_API_ORIGIN`.
  */
 const API_ORIGIN = ((import.meta.env.VITE_API_ORIGIN as string | undefined) ?? '').replace(
   /\/$/,
