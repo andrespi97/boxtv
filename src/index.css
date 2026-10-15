@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: 249 115 22;
+  --brand-secondary: 14 165 233;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #000;
+  color: #fff;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* TV player: never scroll, never show text selection artifacts. */
+.tv-root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+  /* Container so children can size themselves with cqw / cqh units. */
+  container-type: size;
+}
+
+/* 16:9 preview inside the admin panel using the exact same components. */
+.tv-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #000;
+  container-type: size;
+}
+
+/* Images keep their aspect ratio; letterboxing is provided by the frame. */
+.media-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.media-frame img {
+  display: block;
+}
+
+/* Ad bar entrance animation */
+@keyframes ad-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ad-enter {
+  animation: ad-in 0.4s ease both;
+}
+
+@keyframes pulse-danger {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.04);
+    filter: brightness(1.35);
+  }
+}
+
+.timer-danger {
+  animation: pulse-danger 1s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.35s ease both;
+}
+
+.cursor-hidden {
+  cursor: none;
+}
+
+/* Custom scrollbars in the admin panel */
+.admin-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.admin-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+}

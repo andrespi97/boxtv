@@ -1,0 +1,115 @@
+// ---------------------------------------------------------------------------
+// Shared signage domain types (Fase 1)
+// Used by the TV player, the mobile admin panel and the Worker/Durable Object.
+// ---------------------------------------------------------------------------
+
+export type ImageFit = 'contain' | 'cover' | 'blur-fill';
+
+export type BrandBackground = 'black' | 'brand' | 'image';
+
+export type BrandConfig = {
+  logoUrl: string;
+  primaryColor: string;
+  secondaryColor: string;
+  background: BrandBackground;
+  showClock: boolean;
+  /** Optional background image used when `background === "image"`. */
+  backgroundUrl?: string;
+};
+
+export type CarouselItem =
+  | { type: 'image'; url: string; fit: ImageFit }
+  | { type: 'text'; title: string; body: string };
+
+export type TimerMode = 'amrap' | 'intervals' | 'countdown';
+
+export type TimerState = {
+  status: 'idle' | 'running' | 'paused' | 'finished';
+  mode: TimerMode;
+  workSeconds: number;
+  restSeconds: number;
+  rounds: number;
+  currentRound: number;
+  startedAt: number | null;
+  pausedAt: number | null;
+};
+
+export type TimerConfig = {
+  mode: TimerMode;
+  workSeconds: number;
+  restSeconds: number;
+  rounds: number;
+};
+
+export type MainContent =
+  | { type: 'text'; title: string; body: string }
+  | { type: 'image'; url: string; fit: ImageFit }
+  | { type: 'carousel'; items: CarouselItem[]; secondsPerItem: number }
+  | { type: 'timer'; timer: TimerState };
+
+export type AdItem =
+  | { type: 'image'; url: string; fit: ImageFit }
+  | { type: 'text'; title: string; subtitle?: string; imageUrl?: string };
+
+export type AdPlaylist = {
+  enabled: boolean;
+  items: AdItem[];
+  secondsPerAd: number;
+  /** Hide/reduce the ad bar while a timer is running. */
+  pauseDuringTimer: boolean;
+};
+
+export type Screen = {
+  id: string;
+  name: string;
+  gymId: string;
+  brand: BrandConfig;
+  main: MainContent;
+  ads: AdPlaylist;
+  updatedAt: number;
+};
+
+// --------------------------- Realtime contract -----------------------------
+
+export type AdminCommand =
+  | { type: 'SET_BRAND'; brand: BrandConfig }
+  | { type: 'SET_MAIN'; content: MainContent }
+  | { type: 'SET_ADS'; ads: AdPlaylist }
+  | { type: 'START_TIMER'; config: TimerConfig }
+  | { type: 'PAUSE_TIMER' }
+  | { type: 'RESUME_TIMER' }
+  | { type: 'STOP_TIMER' }
+  | { type: 'RESET_TIMER' }
+  | { type: 'SET_SCREEN_NAME'; name: string };
+
+export type TvEvent =
+  | { type: 'STATE_SYNC'; screen: Screen }
+  | { type: 'CONTENT_CHANGED'; main: MainContent }
+  | { type: 'ADS_CHANGED'; ads: AdPlaylist }
+  | { type: 'BRAND_CHANGED'; brand: BrandConfig }
+  | { type: 'TIMER_CHANGED'; timer: TimerState }
+  | { type: 'SCREEN_NAME_CHANGED'; name: string }
+  | { type: 'PONG'; ts: number };
+
+/** Messages the client (TV or admin) can send to the server. */
+export type ClientMessage =
+  | { type: 'PING'; ts: number }
+  | { type: 'STATE_REQUEST' };
+
+// ------------------------------- Status ------------------------------------
+
+export type ConnectionRole = 'tv' | 'admin';
+
+export type ScreenRuntimeStatus = {
+  screenId: string;
+  connected: boolean;
+  tvConnections: number;
+  adminConnections: number;
+  lastSeen: number | null;
+};
+
+export type GymStatus = {
+  gymId: string;
+  screens: ScreenRuntimeStatus[];
+  updatedAt: number;
+};

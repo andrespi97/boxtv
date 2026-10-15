@@ -1,0 +1,3 @@
+# Clave opcional para el panel en desarrollo local.
+# Renombra este archivo a ".dev.vars" para activarla. Sin ella, la API queda abierta.
+ADMIN_KEY=clave-secreta-de-desarrollo

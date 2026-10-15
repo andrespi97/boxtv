@@ -1,0 +1,207 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import type { AdminCommand, Screen } from '@/shared/types/signage';
+import { useAdminScreen } from '@/admin/hooks/useAdminScreen';
+import { useAdminScreens } from '@/admin/hooks/useAdminScreens';
+import { Preview } from '@/admin/components/Preview';
+import { MainEditor } from '@/admin/components/MainEditor';
+import { TimerEditor } from '@/admin/components/TimerEditor';
+import { BrandEditor } from '@/admin/components/BrandEditor';
+import { AdsEditor } from '@/admin/components/AdsEditor';
+import { StatusPanel } from '@/admin/components/StatusPanel';
+import { Button, TextInput } from '@/admin/components/ui';
+
+type Tab = 'main' | 'brand' | 'ads' | 'timer' | 'status';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'main', label: 'Contenido' },
+  { id: 'brand', label: 'Marca' },
+  { id: 'ads', label: 'Publicidad' },
+  { id: 'timer', label: 'Temporizador' },
+  { id: 'status', label: 'Estado' },
+];
+
+export function ScreenEditor() {
+  const { screenId = '' } = useParams();
+  const { screen, status, pending, error, send } = useAdminScreen(screenId);
+  const { data: allScreens } = useAdminScreens();
+  const [draft, setDraft] = useState<Screen | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [tab, setTab] = useState<Tab>('main');
+
+  // Keep the local draft in sync with the server while there are no edits.
+  useEffect(() => {
+    if (screen && !dirty) setDraft(screen);
+  }, [screen, dirty]);
+
+  const patch = (partial: Partial<Screen>) => {
+    setDraft((current) => (current ? { ...current, ...partial } : current));
+    setDirty(true);
+  };
+
+  const publish = async () => {
+    if (!draft) return;
+    await send({ type: 'SET_MAIN', content: draft.main });
+    await send({ type: 'SET_BRAND', brand: draft.brand });
+    await send({ type: 'SET_ADS', ads: draft.ads });
+    if (screen && draft.name !== screen.name) {
+      await send({ type: 'SET_SCREEN_NAME', name: draft.name });
+    }
+    setDirty(false);
+  };
+
+  const discard = () => {
+    if (screen) setDraft(screen);
+    setDirty(false);
+  };
+
+  const handleTimerCommand = (command: AdminCommand) => {
+    void send(command);
+  };
+
+  // The timer is live: preview should use the server tick, not the frozen draft.
+  const previewScreen = useMemo<Screen | null>(() => {
+    if (!draft) return null;
+    if (draft.main.type === 'timer' && screen?.main.type === 'timer') {
+      return {
+        ...draft,
+        main: { type: 'timer', timer: screen.main.timer },
+        ads: draft.ads,
+        brand: draft.brand,
+      };
+    }
+    return draft;
+  }, [draft, screen]);
+
+  const timer = screen?.main.type === 'timer' ? screen.main.timer : null;
+
+  if (!draft || !previewScreen) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-950 text-white">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-scroll min-h-screen bg-slate-950 pb-28 text-white">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 px-[4vw] py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3">
+          <Link
+            to="/admin"
+            className="rounded-lg border border-white/10 px-2.5 py-2 text-sm text-slate-300 hover:bg-white/5"
+          >
+            ←
+          </Link>
+          <div className="min-w-0 flex-1">
+            <TextInput
+              value={draft.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              className="!py-1.5 font-semibold"
+            />
+          </div>
+          <span
+            className="flex items-center gap-1.5 text-xs text-slate-400"
+            title={`Conexión: ${status}`}
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                status === 'open' ? 'bg-emerald-400' : status === 'connecting' ? 'bg-amber-400' : 'bg-red-400'
+              }`}
+            />
+            {status === 'open' ? 'En vivo' : status === 'connecting' ? 'Conectando' : 'Sin conexión'}
+          </span>
+          <a
+            href={`/tv/${draft.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 sm:block"
+          >
+            Abrir TV
+          </a>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-5xl gap-8 px-[4vw] py-6 lg:grid lg:grid-cols-[minmax(0,1fr)_380px]">
+        {/* Preview first on mobile */}
+        <aside className="order-1 mb-6 lg:order-2 lg:mb-0">
+          <div className="lg:sticky lg:top-24">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Previsualización 16:9
+            </p>
+            <Preview screen={previewScreen} />
+            <div className="mt-2 flex justify-between text-xs text-slate-500">
+              <span>Zona principal 80%</span>
+              <span>Publicidad 20%</span>
+            </div>
+          </div>
+        </aside>
+
+        <div className="order-2 space-y-4 lg:order-1">
+          <nav className="flex flex-wrap gap-2">
+            {TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  tab === item.id
+                    ? 'bg-orange-500 text-black'
+                    : 'border border-white/10 text-slate-300 hover:bg-white/5'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {error && (
+            <p className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+              {error}
+            </p>
+          )}
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5">
+            {tab === 'main' && (
+              <MainEditor value={draft.main} onChange={(main) => patch({ main })} />
+            )}
+            {tab === 'brand' && (
+              <BrandEditor value={draft.brand} onChange={(brand) => patch({ brand })} />
+            )}
+            {tab === 'ads' && (
+              <AdsEditor value={draft.ads} onChange={(ads) => patch({ ads })} />
+            )}
+            {tab === 'timer' && (
+              <TimerEditor timer={timer} onCommand={handleTimerCommand} pending={pending} />
+            )}
+            {tab === 'status' && (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-300">
+                  Última actualización: {new Date(draft.updatedAt).toLocaleString('es-ES')}
+                </p>
+                <StatusPanel statuses={allScreens?.statuses ?? []} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Publish bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-slate-950/95 px-[4vw] py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <span className="text-sm text-slate-400">
+            {dirty ? 'Cambios sin publicar' : 'Todo publicado'}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" disabled={!dirty || pending} onClick={discard}>
+              Descartar
+            </Button>
+            <Button variant="primary" disabled={!dirty || pending} onClick={() => void publish()}>
+              {pending ? 'Publicando…' : 'Publicar'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
