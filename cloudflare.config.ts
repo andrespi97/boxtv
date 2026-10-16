@@ -19,7 +19,7 @@ export default defineConfig({
       // (vars del Worker) y en este fichero. Antes de abrir el box al público,
       // vuelve a `bindings.secret()` y despliega con `--secrets-file`.
       // Se puede cambiar por otro valor cuando quieras (y volver a desplegar).
-      ADMIN_KEY: bindings.text("7NMeXzkzh51c2sxmL2JE"),
+      ADMIN_KEY: bindings.text("box123"),
       DEFAULT_GYM_ID: bindings.text("default"),
       GYM_SIGNAGE: bindings.durableObject({
         worker: "boxtv",
