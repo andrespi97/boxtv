@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom';
 import type { CSSProperties } from 'react';
+import { adsHeightPct } from '@/shared/defaults';
 import { useScreenSocket } from '@/shared/hooks/useScreenSocket';
 import { useNightlyRefresh } from '@/shared/hooks/useNightlyRefresh';
 import { useFullscreen } from '@/shared/hooks/useFullscreen';
@@ -37,6 +38,7 @@ export function TvPlayer() {
           <AdBar
             ads={screen.ads}
             brand={screen.brand}
+            heightPct={adsHeightPct(screen.brand)}
             compact={Boolean(timerRunning && screen.ads.pauseDuringTimer)}
           />
         </>

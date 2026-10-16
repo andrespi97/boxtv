@@ -70,6 +70,30 @@ function withGym(url: string): string {
   return u.pathname + u.search;
 }
 
+// --------------------------- Unauth handling -------------------------------
+
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+/**
+ * Fires whenever an admin request is rejected with `401` (e.g. the shared key
+ * was changed on the Worker while the panel was open). Returns an unsubscribe
+ * function. The gate uses it to send the user back to the password form.
+ */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function handleUnauthorized(): void {
+  // Drop the stale key so the gate asks for it again...
+  setAdminKey('');
+  // ...and let whoever is listening switch back to the lock screen.
+  for (const listener of unauthorizedListeners) listener();
+}
+
 /** Site-relative URL of a TV player, preserving the configured gym. */
 export function tvPath(screenId: string): string {
   return withGym(`/tv/${encodeURIComponent(screenId)}`);
@@ -86,6 +110,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${withGym(path)}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 401) handleUnauthorized();
     throw new Error(errorMessage(text, res.status));
   }
   return (await res.json()) as T;

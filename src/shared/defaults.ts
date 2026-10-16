@@ -15,7 +15,37 @@ export const DEFAULT_BRAND: BrandConfig = {
   secondaryColor: '#0ea5e9',
   background: 'black',
   showClock: true,
+  headerTitle: '',
+  headerSubtitle: '',
+  headerHeightPct: 10,
+  adsHeightPct: 20,
 };
+
+// --------------------------- Layout proportions ----------------------------
+
+/** Allowed ranges for the adjustable screen proportions (percent of height). */
+export const HEADER_PCT_RANGE = { min: 6, max: 20 } as const;
+export const ADS_PCT_RANGE = { min: 8, max: 40 } as const;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Header height in `cqh`, clamped and defaulted for older stored screens. */
+export function headerHeightPct(brand: BrandConfig): number {
+  const value = brand.headerHeightPct;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clamp(value, HEADER_PCT_RANGE.min, HEADER_PCT_RANGE.max)
+    : DEFAULT_BRAND.headerHeightPct!;
+}
+
+/** Ad bar height in `cqh`, clamped and defaulted for older stored screens. */
+export function adsHeightPct(brand: BrandConfig): number {
+  const value = brand.adsHeightPct;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clamp(value, ADS_PCT_RANGE.min, ADS_PCT_RANGE.max)
+    : DEFAULT_BRAND.adsHeightPct!;
+}
 
 export const DEFAULT_ADS: AdPlaylist = {
   enabled: false,

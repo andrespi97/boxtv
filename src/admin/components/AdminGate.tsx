@@ -1,5 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { getAdminKey, setAdminKey, signageClient } from '@/shared/api/signageClient';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  getAdminKey,
+  onUnauthorized,
+  setAdminKey,
+  signageClient,
+} from '@/shared/api/signageClient';
 
 type AuthState = 'checking' | 'authorized' | 'locked';
 
@@ -12,14 +17,20 @@ type AuthState = 'checking' | 'authorized' | 'locked';
 export function AdminGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>('checking');
   const [error, setError] = useState<string | null>(null);
+  // Tracks whether the user is currently inside the panel, so we can tell a
+  // failed first attempt (wrong key) apart from a key that stopped working
+  // mid-session (e.g. the Worker was redeployed with a new key).
+  const authorizedRef = useRef(false);
 
   const validate = async (key: string, { silent = false }: { silent?: boolean } = {}) => {
     setAdminKey(key);
     try {
       await signageClient.listScreens();
+      authorizedRef.current = true;
       setState('authorized');
       setError(null);
     } catch (err) {
+      authorizedRef.current = false;
       const message = err instanceof Error ? err.message : 'Error';
       if (message.toLowerCase().includes('unauthorized')) {
         // Don't scold the user on the automatic first check when no key was
@@ -33,7 +44,17 @@ export function AdminGate({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Any admin request answered with 401 (stale/changed key) drops us back to
+    // the password form instead of leaving the panel showing errors.
+    const unsubscribe = onUnauthorized(() => {
+      if (authorizedRef.current) {
+        setError('La clave ha cambiado o ya no es válida. Vuelve a introducirla.');
+      }
+      authorizedRef.current = false;
+      setState('locked');
+    });
     void validate(getAdminKey(), { silent: true });
+    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -44,7 +65,6 @@ export function AdminGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
   if (state === 'authorized') return <>{children}</>;
 
   return <KeyScreen error={error} onUnlock={validate} />;
@@ -60,30 +80,45 @@ function KeyScreen({
   const [value, setValue] = useState('');
 
   return (
-    <div className="admin-scroll flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white">
+    <div className="admin-scroll relative grid min-h-screen place-items-center overflow-hidden bg-slate-950 p-6 text-white">
+      {/* Soft brand glow behind the card. */}
+      <div className="pointer-events-none absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-orange-500/20 blur-3xl" />
+
       <form
         onSubmit={(e) => {
           e.preventDefault();
           onUnlock(value.trim());
         }}
-        className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-slate-900 p-6"
+        className="relative w-full max-w-sm space-y-5 rounded-3xl border border-white/10 bg-slate-900/80 p-7 shadow-2xl shadow-black/50 backdrop-blur"
       >
-        <div>
-          <h1 className="text-xl font-bold">Panel de administración</h1>
-          <p className="text-sm text-slate-400">Introduce la clave del box para continuar.</p>
+        <div className="flex flex-col items-center gap-3 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 text-lg font-black text-black shadow-lg shadow-orange-500/20">
+            B
+          </span>
+          <div>
+            <h1 className="text-lg font-bold">Panel de administración</h1>
+            <p className="text-sm text-slate-400">Introduce la clave del box para continuar.</p>
+          </div>
         </div>
+
         <input
           type="password"
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="Clave secreta"
-          className="w-full rounded-lg border border-white/10 bg-slate-800 px-4 py-3 text-white outline-none focus:border-orange-500"
+          className="w-full rounded-xl border border-white/10 bg-slate-800 px-4 py-3 text-center text-white tracking-widest outline-none transition focus:border-orange-500"
         />
-        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {error && (
+          <p className="rounded-lg bg-red-500/10 px-3 py-2 text-center text-sm text-red-300">
+            {error}
+          </p>
+        )}
+
         <button
           type="submit"
-          className="w-full rounded-lg bg-orange-500 px-4 py-3 font-semibold text-black hover:bg-orange-400"
+          className="w-full rounded-xl bg-orange-500 px-4 py-3 font-semibold text-black transition hover:bg-orange-400"
         >
           Entrar
         </button>

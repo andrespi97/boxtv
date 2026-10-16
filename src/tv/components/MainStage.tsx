@@ -36,6 +36,17 @@ export function MainStage({ main, brand }: MainStageProps) {
           <div className="absolute inset-0 bg-black/50" />
         </>
       )}
+      {brand.background === 'black' && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `radial-gradient(ellipse at 50% 35%, ${withAlpha(
+              brand.primaryColor,
+              0.07,
+            )}, #000 78%)`,
+          }}
+        />
+      )}
 
       <div className="relative z-10 h-full w-full">
         {main.type === 'text' && <TextStage title={main.title} body={main.body} brand={brand} />}

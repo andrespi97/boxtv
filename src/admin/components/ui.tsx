@@ -97,6 +97,60 @@ export function Toggle({
   );
 }
 
+export function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-white">{title}</h3>
+        {description && <p className="text-xs text-slate-500">{description}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function RangeInput({
+  value,
+  min,
+  max,
+  step = 1,
+  suffix = '%',
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-slate-700 accent-orange-500"
+      />
+      <span className="w-12 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-200">
+        {value}
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
 export function FitPicker({
   value,
   onChange,

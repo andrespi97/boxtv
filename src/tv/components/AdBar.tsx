@@ -7,9 +7,11 @@ type AdBarProps = {
   brand: BrandConfig;
   /** When true the bar collapses to give the timer full attention. */
   compact?: boolean;
+  /** Full height as a percentage of the screen height (default 20). */
+  heightPct?: number;
 };
 
-export function AdBar({ ads, brand, compact = false }: AdBarProps) {
+export function AdBar({ ads, brand, compact = false, heightPct }: AdBarProps) {
   const items = useMemo(() => ads.items.filter((item) => hasContent(item)), [ads.items]);
   const [index, setIndex] = useState(0);
 
@@ -29,13 +31,15 @@ export function AdBar({ ads, brand, compact = false }: AdBarProps) {
   if (!ads.enabled || items.length === 0) return null;
 
   const item = items[Math.min(index, items.length - 1)];
+  const normalPct = heightPct && heightPct > 0 ? heightPct : 20;
+  const compactPct = Math.max(6, Math.round(normalPct * 0.4));
 
   return (
     <footer
       className="relative overflow-hidden border-t"
       style={{
-        height: compact ? '8cqh' : '20cqh',
-        minHeight: compact ? 48 : 90,
+        height: `${compact ? compactPct : normalPct}cqh`,
+        minHeight: compact ? 42 : 72,
         borderColor: withAlpha(brand.primaryColor, 0.35),
         background: `linear-gradient(180deg, ${withAlpha(brand.primaryColor, 0.08)}, #000 90%)`,
       }}

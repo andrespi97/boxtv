@@ -45,6 +45,10 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || isString(value);
 }
 
+function isOptionalNumber(value: unknown): boolean {
+  return value === undefined || isFiniteNumber(value);
+}
+
 function isBrandConfig(value: unknown): value is BrandConfig {
   if (!isObject(value)) return false;
   return (
@@ -53,7 +57,11 @@ function isBrandConfig(value: unknown): value is BrandConfig {
     isString(value.secondaryColor) &&
     isOneOf(value.background, BRAND_BACKGROUNDS) &&
     typeof value.showClock === 'boolean' &&
-    isOptionalString(value.backgroundUrl)
+    isOptionalString(value.backgroundUrl) &&
+    isOptionalString(value.headerTitle) &&
+    isOptionalString(value.headerSubtitle) &&
+    isOptionalNumber(value.headerHeightPct) &&
+    isOptionalNumber(value.adsHeightPct)
   );
 }
 

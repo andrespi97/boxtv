@@ -15,6 +15,14 @@ export type BrandConfig = {
   showClock: boolean;
   /** Optional background image used when `background === "image"`. */
   backgroundUrl?: string;
+  /** Custom header title. Falls back to the screen name when empty. */
+  headerTitle?: string;
+  /** Optional line shown under the header title (e.g. the box name). */
+  headerSubtitle?: string;
+  /** Header height as a percentage of the screen height (default 10). */
+  headerHeightPct?: number;
+  /** Ad bar height as a percentage of the screen height (default 20). */
+  adsHeightPct?: number;
 };
 
 export type CarouselItem =

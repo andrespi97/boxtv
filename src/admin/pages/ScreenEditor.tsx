@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { AdminCommand, MainContent, Screen } from '@/shared/types/signage';
+import { adsHeightPct, headerHeightPct } from '@/shared/defaults';
 import { useAdminScreen } from '@/admin/hooks/useAdminScreen';
 import { useAdminScreens } from '@/admin/hooks/useAdminScreens';
 import { tvPath } from '@/shared/api/signageClient';
@@ -23,7 +24,7 @@ function isEditableField(field: string): field is EditableField {
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'main', label: 'Contenido' },
-  { id: 'brand', label: 'Marca' },
+  { id: 'brand', label: 'Aspecto' },
   { id: 'ads', label: 'Publicidad' },
   { id: 'timer', label: 'Temporizador' },
   { id: 'status', label: 'Estado' },
@@ -126,11 +127,12 @@ export function ScreenEditor() {
 
   return (
     <div className="admin-scroll min-h-screen bg-slate-950 pb-28 text-white">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 px-[4vw] py-3 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/85 px-[4vw] py-3 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Link
             to="/admin"
-            className="rounded-lg border border-white/10 px-2.5 py-2 text-sm text-slate-300 hover:bg-white/5"
+            aria-label="Volver"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 text-slate-300 transition hover:bg-white/5"
           >
             ←
           </Link>
@@ -138,16 +140,27 @@ export function ScreenEditor() {
             <TextInput
               value={draft.name}
               onChange={(e) => patch({ name: e.target.value })}
-              className="!py-1.5 font-semibold"
+              aria-label="Nombre de la pantalla"
+              className="!py-2 font-semibold"
             />
           </div>
           <span
-            className="flex items-center gap-1.5 text-xs text-slate-400"
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              status === 'open'
+                ? 'bg-emerald-500/15 text-emerald-300'
+                : status === 'connecting'
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : 'bg-red-500/15 text-red-300'
+            }`}
             title={`Conexión: ${status}`}
           >
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                status === 'open' ? 'bg-emerald-400' : status === 'connecting' ? 'bg-amber-400' : 'bg-red-400'
+              className={`h-1.5 w-1.5 rounded-full ${
+                status === 'open'
+                  ? 'animate-pulse bg-emerald-400'
+                  : status === 'connecting'
+                    ? 'bg-amber-400'
+                    : 'bg-red-400'
               }`}
             />
             {status === 'open' ? 'En vivo' : status === 'connecting' ? 'Conectando' : 'Sin conexión'}
@@ -156,7 +169,7 @@ export function ScreenEditor() {
             href={tvPath(draft.id)}
             target="_blank"
             rel="noreferrer"
-            className="hidden rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 sm:block"
+            className="hidden rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/5 sm:block"
           >
             Abrir TV
           </a>
@@ -172,8 +185,13 @@ export function ScreenEditor() {
             </p>
             <Preview screen={previewScreen} />
             <div className="mt-2 flex justify-between text-xs text-slate-500">
-              <span>Cabecera 10% · Principal 70%</span>
-              <span>Publicidad 20%</span>
+              <span>
+                Cabecera {headerHeightPct(draft.brand)}% · Principal{' '}
+                {Math.max(0, 100 - headerHeightPct(draft.brand) - adsHeightPct(draft.brand))}%
+              </span>
+              <span>
+                Publicidad {draft.ads.enabled ? `${adsHeightPct(draft.brand)}%` : 'off'}
+              </span>
             </div>
           </div>
         </aside>

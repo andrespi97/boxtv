@@ -1,4 +1,5 @@
 import type { Screen } from '@/shared/types/signage';
+import { adsHeightPct } from '@/shared/defaults';
 import { useTimerActive } from '@/shared/hooks/useTimer';
 import { HeaderBar } from '@/tv/components/HeaderBar';
 import { MainStage } from '@/tv/components/MainStage';
@@ -17,6 +18,7 @@ export function Preview({ screen }: { screen: Screen }) {
         <AdBar
           ads={screen.ads}
           brand={screen.brand}
+          heightPct={adsHeightPct(screen.brand)}
           compact={Boolean(timerRunning && screen.ads.pauseDuringTimer)}
         />
       </div>
