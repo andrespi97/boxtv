@@ -27,13 +27,20 @@ const SCREENS_KEY = 'screens';
 const screenKey = (id: string) => `screen:${id}`;
 
 /**
- * Screen ids seeded by earlier versions of the app. Anything here that is no
- * longer a default is deleted the first time a gym boots this version, so
- * boxes that used to have `entrada`/`sala-2` end up with a single `wod` tele.
+ * A box has a single tele, so the app only ever ships the ids in
+ * `DEFAULT_SCREEN_IDS`. Any other id — a typo, or a stale link such as
+ * `/admin/admin` — resolves to the shipped screen instead of silently
+ * creating a second, empty one.
  */
-const RETIRED_SCREEN_IDS = ['entrada', 'sala-2'];
+function resolveScreenId(raw: string | null | undefined): string {
+  const fallback = DEFAULT_SCREEN_IDS[0];
+  if (!raw) return fallback;
+  return (DEFAULT_SCREEN_IDS as readonly string[]).includes(raw) ? raw : fallback;
+}
+
 const SEED_VERSION_KEY = 'seedVersion';
-const SEED_VERSION = 2;
+/** Bumped whenever the stored screen set has to be reconciled on boot. */
+const SEED_VERSION = 3;
 
 /**
  * One Durable Object per gym. It keeps:
@@ -75,7 +82,7 @@ export class GymSignageDO implements DurableObject {
   // ------------------------------ WebSocket --------------------------------
 
   private async handleWebSocket(url: URL): Promise<Response> {
-    const screenId = url.searchParams.get('screenId') || DEFAULT_SCREEN_IDS[0];
+    const screenId = resolveScreenId(url.searchParams.get('screenId'));
     const role: ConnectionRole = url.searchParams.get('role') === 'admin' ? 'admin' : 'tv';
 
     const screen = await this.getOrCreateScreen(screenId);
@@ -159,12 +166,13 @@ export class GymSignageDO implements DurableObject {
     const body = (await request.json()) as { screenId?: unknown; command?: unknown };
     // The screen id in the URL (set by the Worker from the request path) is the
     // source of truth; the body field is only a fallback.
-    const screenId =
+    const screenId = resolveScreenId(
       url.searchParams.get('screenId') ??
-      (typeof body.screenId === 'string' ? body.screenId : null);
+        (typeof body.screenId === 'string' ? body.screenId : null),
+    );
     const command = parseAdminCommand(body.command);
-    if (!screenId || !command) {
-      return json({ error: 'screenId and a valid command are required' }, 400);
+    if (!command) {
+      return json({ error: 'A valid command is required' }, 400);
     }
     const { screen } = await this.dispatchCommand(screenId, command);
     return json({ ok: true, screen });
@@ -264,7 +272,7 @@ export class GymSignageDO implements DurableObject {
   // -------------------------------- Reads ----------------------------------
 
   private async handleGetState(url: URL): Promise<Response> {
-    const screenId = url.searchParams.get('screenId') || DEFAULT_SCREEN_IDS[0];
+    const screenId = resolveScreenId(url.searchParams.get('screenId'));
     const screen = await this.getOrCreateScreen(screenId);
     return json({ screen });
   }
@@ -321,25 +329,24 @@ export class GymSignageDO implements DurableObject {
       return;
     }
 
-    // One-time migration: drop screens that earlier versions seeded but the app
-    // no longer ships (e.g. `entrada`, `sala-2`). Keeps user-created ids intact.
+    // One-time migration: the box is a single tele, so drop every screen the
+    // app no longer ships (`entrada`, `sala-2`, or any stray id created by an
+    // old link such as `/admin/admin`).
     const version = (await this.state.storage.get<number>(SEED_VERSION_KEY)) ?? 1;
     if (version >= SEED_VERSION) return;
 
-    const ids = [...stored];
-    let changed = false;
-    for (const id of RETIRED_SCREEN_IDS) {
-      const index = ids.indexOf(id);
-      if (index === -1) continue;
-      ids.splice(index, 1);
+    const shipped = new Set<string>(DEFAULT_SCREEN_IDS);
+    const kept = stored.filter((id) => shipped.has(id));
+    const dropped = stored.filter((id) => !shipped.has(id));
+    for (const id of dropped) {
       await this.state.storage.delete(screenKey(id));
-      changed = true;
     }
-    if (changed) await this.state.storage.put(SCREENS_KEY, ids);
+    if (dropped.length > 0) await this.state.storage.put(SCREENS_KEY, kept);
     await this.state.storage.put(SEED_VERSION_KEY, SEED_VERSION);
   }
 
-  private async getOrCreateScreen(screenId: string): Promise<Screen> {
+  private async getOrCreateScreen(rawScreenId: string): Promise<Screen> {
+    const screenId = resolveScreenId(rawScreenId);
     await this.ensureSeed();
     const existing = await this.state.storage.get<Screen>(screenKey(screenId));
     if (existing) return existing;
