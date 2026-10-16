@@ -86,9 +86,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_ORIGIN}${withGym(path)}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Request failed with ${res.status}`);
+    throw new Error(errorMessage(text, res.status));
   }
   return (await res.json()) as T;
+}
+
+/** Prefers the Worker's `{ "error": "…" }` message over raw JSON when present. */
+function errorMessage(text: string, status: number): string {
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (parsed && typeof parsed.error === 'string') return parsed.error;
+  } catch {
+    // not JSON; fall through to the raw text
+  }
+  return text || `Request failed with ${status}`;
 }
 
 export const signageClient = {
@@ -102,6 +113,28 @@ export const signageClient = {
       { method: 'POST', body: JSON.stringify({ command }) },
     );
   },
+
+  /** Uploads an image file to B2 and returns a stable site-relative URL. */
+  uploadImage(file: File) {
+    const headers = new Headers();
+    const key = getAdminKey();
+    if (key) headers.set('X-Admin-Key', key);
+    headers.set('Content-Type', file.type || 'application/octet-stream');
+
+    return request<UploadedImage>('/api/uploads', {
+      method: 'POST',
+      headers,
+      body: file,
+    });
+  },
+};
+
+export type UploadedImage = {
+  /** Site-relative URL to store in the screen (e.g. `/api/media/default/x.png`). */
+  url: string;
+  key: string;
+  contentType: string;
+  size: number;
 };
 
 export function wsUrl(screenId: string, role: 'tv' | 'admin'): string {

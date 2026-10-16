@@ -1,12 +1,13 @@
 # Box Signage — Fase 1
 
-Digital signage para boxes de CrossFit: varias TVs, WOD, imágenes de cualquier
+Digital signage para boxes de CrossFit: una TV, WOD, imágenes de cualquier
 proporción (con bandas negras, `cover` o `blur-fill`), logo del box, publicidad
 rotativa y actualización en tiempo real desde el móvil.
 
-Todo corre sobre **Cloudflare Workers + Static Assets + un Durable Object**, sin
-backend tradicional ni coste adicional. El Worker sirve el build de Vite (rol de
-"Pages") y expone la API/WebSocket en `/api/*`.
+Todo corre sobre **Cloudflare Workers + Static Assets + un Durable Object**, con
+las imágenes en **Backblaze B2**, sin backend tradicional ni coste adicional. El
+Worker sirve el build de Vite (rol de "Pages") y expone la API/WebSocket en
+`/api/*`.
 
 > **CLI:** el proyecto usa **`cf`** (el CLI nuevo de Cloudflare) junto con el
 > plugin `@cloudflare/vite-plugin@beta`. La configuración vive en
@@ -27,8 +28,14 @@ Admin POST /api/... ──HTTP──┘        │
                          · guarda las Screen en storage
                          · mantiene los WebSockets (con hibernación)
                          · difunde deltas a las TVs
+                                     │
+Admin POST /api/uploads ─────────────┴──►  Backblaze B2 (S3, bucket privado)
+                                            · imágenes subidas desde el panel
+                                            · el Worker firma y hace de proxy
 ```
 
+- `worker/index.ts` — API HTTP, subida/servido de imágenes (B2) y puente WebSocket.
+- `worker/mediaStorage.ts` — cliente S3 (SigV4) contra Backblaze B2.
 - `worker/durable/GymSignageDO.ts` — estado persistente + WebSockets + broadcast.
 - `src/shared/types/signage.ts` — contrato de tipos (`Screen`, `AdminCommand`, `TvEvent`).
 - `src/shared/timer.ts` — cálculo local del temporizador compartido por TV y panel.
@@ -70,9 +77,7 @@ el plugin enruta `/api/*` al Worker.
 Abre:
 
 - Panel: http://localhost:5173/admin
-- TV WOD: http://localhost:5173/tv/wod
-- TV Entrada: http://localhost:5173/tv/entrada
-- TV Sala 2: http://localhost:5173/tv/sala-2
+- TV: http://localhost:5173/tv/wod
 
 ### Producción
 
@@ -87,10 +92,8 @@ La primera vez autentícate con `npx cf auth login`. En CI, `cf` también lee
 Tras el despliegue tendrás algo como:
 
 ```
-https://signage-tu-box.<subdominio>.workers.dev/tv/wod
-https://signage-tu-box.<subdominio>.workers.dev/tv/entrada
-https://signage-tu-box.<subdominio>.workers.dev/tv/sala-2
-https://signage-tu-box.<subdominio>.workers.dev/admin
+https://boxtv.<subdominio>.workers.dev          # → abre la tele (raíz)
+https://boxtv.<subdominio>.workers.dev/admin    # → panel de administración
 ```
 
 ---
@@ -105,7 +108,7 @@ la API queda abierta (útil en local). Para activarla en producción:
 npx cf deploy --secrets-file .secrets.env
 
 # Alternativa mientras `cf` sigue en beta (aún no fija secretos sueltos)
-npx wrangler secret put ADMIN_KEY --name signage-box
+npx wrangler secret put ADMIN_KEY --name boxtv
 ```
 
 `.secrets.env` es un fichero JSON o `.env` con `ADMIN_KEY=...`; añádelo a
@@ -134,7 +137,7 @@ Definido en `src/shared/types/signage.ts`. Resumen:
 - `TimerState`: `status`, `mode`, `workSeconds`, `restSeconds`, `rounds`,
   `currentRound`, `startedAt`, `pausedAt`.
 
-Pantallas creadas automáticamente: `wod`, `entrada`, `sala-2`.
+Pantallas creadas automáticamente: `wod`.
 
 ---
 
@@ -159,7 +162,63 @@ Pantallas creadas automáticamente: `wod`, `entrada`, `sala-2`.
 | `blur-fill` | Copia ampliada y desenfocada detrás + imagen centrada.|
 
 Solo se aceptan URLs HTTPS o rutas relativas al sitio (se rechazan las URLs
-protocol-relative `//…`); se avisa en el panel si la URL no es válida.
+protocol-relative `//…`); se avisa en el panel si la URL no es válida. Las
+imágenes subidas desde el panel se sirven como rutas relativas
+(`/api/media/…`), así que también pasan esta validación.
+
+---
+
+## Subida de imágenes (Backblaze B2)
+
+El panel incluye un botón **Subir imagen** en cada campo de imagen (contenido,
+carrusel, publicidad, logo y fondo). El flujo es:
+
+1. El móvil hace `POST /api/uploads` con el archivo en binario y la cabecera
+   `X-Admin-Key` (solo admins).
+2. El Worker valida el tipo (`png`, `jpeg`, `webp`, `gif`, `avif`, `svg`) y el
+   tamaño (máx. 10 MB) y sube el objeto a **Backblaze B2** (API S3, firmada con
+   SigV4 vía `aws4fetch`) bajo una clave única `<gym>/<uuid>.<ext>`.
+3. Devuelve una URL estable `/api/media/<clave>` que se guarda en el `Screen`.
+4. La TV la carga con un `<img>` normal. El Worker hace de **proxy** contra B2,
+   así el egress va de B2 a Cloudflare (Backblaze está en el *Bandwidth
+   Alliance* → gratis) y el bucket queda privado.
+
+### Por qué B2 y no R2
+
+R2 no tiene **tope duro**: si te pasas del free tier te cobra (solo puedes poner
+alertas). B2 tiene **Caps & Alerts**: pones un cap y, al alcanzarlo, las subidas
+**fallan** en vez de cobrarte. Gratis: 10 GB de almacenamiento.
+
+### Configuración
+
+Credenciales en `.dev.vars` (secreto, local) / `.secrets.env` (secreto, deploy):
+
+| Binding | Descripción |
+| ------- | ----------- |
+| `B2_KEY_ID` | keyID de una Application Key de B2 (25 caracteres) |
+| `B2_APPLICATION_KEY` | applicationKey (31 caracteres, solo se muestra una vez) |
+
+Bucket y región en `cloudflare.config.ts` (texto fijo, **no** secreto):
+`B2_BUCKET` (`boxtv-media`) y `B2_REGION` (`eu-central-003`). Como son valores
+literales, `.dev.vars` **no** los sobreescribe: si cambias de bucket/región,
+edítalos en el config.
+
+Pasos (una vez):
+
+1. En Backblaze, crea un **bucket privado** y una **Application Key** con acceso
+   a ese bucket (con `Read and Write`).
+2. Anota la **región** del endpoint del bucket (B2 → bucket → *Endpoint*,
+   `s3.<región>.backblazeb2.com`) y ponla en `B2_REGION` en el config.
+3. Copia `.dev.vars.example` a `.dev.vars` y rellena `B2_KEY_ID` y
+   `B2_APPLICATION_KEY` (desarrollo local).
+4. Para producción, sube los secretos en el deploy:
+   `npx cf deploy --secrets-file .secrets.env` (con `B2_KEY_ID` y
+   `B2_APPLICATION_KEY` dentro; el fichero va en `.gitignore`). Como alternativa:
+   `npx wrangler secret put B2_KEY_ID --name boxtv`.
+
+Sin configurar, la subida devuelve `503` y el resto de la app sigue igual
+(las imágenes por URL funcionan siempre). En local, `cf dev` no simula B2: hace
+las peticiones reales a Backblaze, así que necesitas el `.dev.vars` rellenado.
 
 ---
 
@@ -183,7 +242,6 @@ temporizador se compacta (`pauseDuringTimer`) para no competir con el cronómetr
 
 ---
 
-## Roadmap (Fase 2)
+## Roadmap (Fase 3)
 
-Subida de imágenes a R2, usuarios, programación horaria, plantillas y
-monitorización. El campo `url` pasará a apuntar a R2 sin cambios en el player.
+Usuarios, programación horaria, plantillas y monitorización.

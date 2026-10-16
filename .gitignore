@@ -8,3 +8,4 @@ dist
 .cloudflare
 result.json
 src/result.json
+.secrets.env

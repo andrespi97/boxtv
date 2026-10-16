@@ -7,7 +7,7 @@ import type {
 } from './types/signage';
 
 /** Stable screen ids created for every box from day one. */
-export const DEFAULT_SCREEN_IDS = ['wod', 'entrada', 'sala-2'] as const;
+export const DEFAULT_SCREEN_IDS = ['wod'] as const;
 
 export const DEFAULT_BRAND: BrandConfig = {
   logoUrl: '',

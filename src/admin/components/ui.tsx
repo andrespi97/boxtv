@@ -1,6 +1,8 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { useRef, useState } from 'react';
 import type { ImageFit } from '@/shared/types/signage';
 import { isSafeImageUrl } from '@/shared/color';
+import { signageClient } from '@/shared/api/signageClient';
 
 export function Field({
   label,
@@ -137,15 +139,60 @@ export function ImageUrlInput({
   onChange: (value: string) => void;
   placeholder?: string;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const valid = !value || isSafeImageUrl(value);
+
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { url } = await signageClient.uploadImage(file);
+      onChange(url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'No se pudo subir la imagen');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <TextInput
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/svg+xml"
+          className="hidden"
+          onChange={(e) => void upload(e.target.files?.[0])}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          className="!px-3 !py-2"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploading ? 'Subiendo…' : 'Subir imagen'}
+        </Button>
+        {value && valid && (
+          <img
+            src={value}
+            alt=""
+            className="h-10 w-10 rounded-lg border border-white/10 bg-slate-800 object-cover"
+          />
+        )}
+      </div>
       {!valid && <p className="text-xs text-amber-400">La URL debe ser HTTPS.</p>}
+      {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
     </div>
   );
 }

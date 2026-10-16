@@ -1,5 +1,6 @@
 import { GymSignageDO } from './durable/GymSignageDO';
 import { CORS_HEADERS, type Env } from './env';
+import { getMediaStorage } from './mediaStorage';
 import { decodeWsKey } from '../src/shared/wsKey';
 
 export { GymSignageDO };
@@ -30,11 +31,24 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   const { pathname } = url;
 
   if (pathname === '/api/health') {
-    return json({ ok: true, service: 'signage-box', ts: Date.now() });
+    return json({ ok: true, service: 'boxtv', ts: Date.now() });
+  }
+
+  // Public: TVs load uploaded images with a plain <img>, so this route must not
+  // require the admin key. Keys are unguessable UUIDs generated on upload.
+  const mediaMatch = pathname.match(/^\/api\/media\/(.+)$/);
+  if (mediaMatch && request.method === 'GET') {
+    return serveMedia(env, decodeURIComponent(mediaMatch[1]));
   }
 
   const gymId = url.searchParams.get('gym') || env.DEFAULT_GYM_ID || 'default';
   const stub = env.GYM_SIGNAGE.get(env.GYM_SIGNAGE.idFromName(gymId));
+
+  // Admin: upload an image to B2 and get back a stable site-relative URL.
+  if (pathname === '/api/uploads' && request.method === 'POST') {
+    if (!isAuthorized(request, env)) return json({ error: 'Unauthorized' }, 401);
+    return handleUpload(request, env, gymId);
+  }
 
   // WebSocket upgrade: /api/ws/:screenId?role=tv|admin
   const wsMatch = pathname.match(/^\/api\/ws\/([^/]+)$/);
@@ -106,6 +120,83 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 function isAuthorized(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return true; // no key configured -> open (dev)
   return request.headers.get('x-admin-key') === env.ADMIN_KEY;
+}
+
+// ------------------------------ Media (B2) ---------------------------------
+
+/** Hard cap per image so a single upload can't exhaust storage/bandwidth. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+/** Accepted upload content types mapped to the file extension used in the key. */
+const IMAGE_TYPES: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+  'image/svg+xml': 'svg',
+};
+
+async function handleUpload(request: Request, env: Env, gymId: string): Promise<Response> {
+  const storage = getMediaStorage(env);
+  if (!storage) return json({ error: 'Almacenamiento de imágenes no configurado' }, 503);
+
+  const contentType = (request.headers.get('content-type') ?? '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  const ext = IMAGE_TYPES[contentType];
+  if (!ext) {
+    return json({ error: `Tipo de imagen no admitido: ${contentType || 'desconocido'}` }, 415);
+  }
+
+  const maxLabel = `${MAX_UPLOAD_BYTES / 1024 / 1024} MB`;
+  const declared = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
+    return json({ error: `La imagen supera el máximo de ${maxLabel}` }, 413);
+  }
+
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength === 0) return json({ error: 'El archivo está vacío' }, 400);
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    return json({ error: `La imagen supera el máximo de ${maxLabel}` }, 413);
+  }
+
+  const safeGym = gymId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'default';
+  const key = `${safeGym}/${crypto.randomUUID()}.${ext}`;
+
+  try {
+    await storage.put(key, bytes, contentType);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error al subir la imagen';
+    return json({ error: message }, 502);
+  }
+
+  return json({ url: `/api/media/${key}`, key, contentType, size: bytes.byteLength });
+}
+
+async function serveMedia(env: Env, key: string): Promise<Response> {
+  const storage = getMediaStorage(env);
+  if (!storage) return json({ error: 'Almacenamiento de imágenes no configurado' }, 503);
+
+  let object: Response | null;
+  try {
+    object = await storage.get(key);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error al leer la imagen';
+    return json({ error: message }, 502);
+  }
+  if (!object) return new Response('Not found', { status: 404 });
+
+  const headers = new Headers();
+  const contentType = object.headers.get('content-type');
+  if (contentType) headers.set('Content-Type', contentType);
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  // Defence in depth: uploads are admin-only, but never run scripts if an SVG
+  // is opened directly instead of being embedded with <img>.
+  headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+  return new Response(object.body, { status: 200, headers });
 }
 
 function json(data: unknown, status = 200): Response {

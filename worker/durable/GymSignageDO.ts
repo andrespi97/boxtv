@@ -27,6 +27,15 @@ const SCREENS_KEY = 'screens';
 const screenKey = (id: string) => `screen:${id}`;
 
 /**
+ * Screen ids seeded by earlier versions of the app. Anything here that is no
+ * longer a default is deleted the first time a gym boots this version, so
+ * boxes that used to have `entrada`/`sala-2` end up with a single `wod` tele.
+ */
+const RETIRED_SCREEN_IDS = ['entrada', 'sala-2'];
+const SEED_VERSION_KEY = 'seedVersion';
+const SEED_VERSION = 2;
+
+/**
  * One Durable Object per gym. It keeps:
  *  - the persisted `Screen` objects keyed by screen id,
  *  - the live WebSocket connections (TV players + admin panels),
@@ -300,13 +309,34 @@ export class GymSignageDO implements DurableObject {
   // ------------------------------- Storage ---------------------------------
 
   private async ensureSeed(): Promise<void> {
-    const existing = await this.state.storage.get<string[]>(SCREENS_KEY);
-    if (existing) return;
-    const ids = [...DEFAULT_SCREEN_IDS];
-    await this.state.storage.put(SCREENS_KEY, ids);
-    await Promise.all(
-      ids.map((id) => this.state.storage.put(screenKey(id), createDefaultScreen(id, this.gymId))),
-    );
+    const stored = await this.state.storage.get<string[]>(SCREENS_KEY);
+    if (!stored) {
+      await this.state.storage.put(SCREENS_KEY, [...DEFAULT_SCREEN_IDS]);
+      await Promise.all(
+        DEFAULT_SCREEN_IDS.map((id) =>
+          this.state.storage.put(screenKey(id), createDefaultScreen(id, this.gymId)),
+        ),
+      );
+      await this.state.storage.put(SEED_VERSION_KEY, SEED_VERSION);
+      return;
+    }
+
+    // One-time migration: drop screens that earlier versions seeded but the app
+    // no longer ships (e.g. `entrada`, `sala-2`). Keeps user-created ids intact.
+    const version = (await this.state.storage.get<number>(SEED_VERSION_KEY)) ?? 1;
+    if (version >= SEED_VERSION) return;
+
+    const ids = [...stored];
+    let changed = false;
+    for (const id of RETIRED_SCREEN_IDS) {
+      const index = ids.indexOf(id);
+      if (index === -1) continue;
+      ids.splice(index, 1);
+      await this.state.storage.delete(screenKey(id));
+      changed = true;
+    }
+    if (changed) await this.state.storage.put(SCREENS_KEY, ids);
+    await this.state.storage.put(SEED_VERSION_KEY, SEED_VERSION);
   }
 
   private async getOrCreateScreen(screenId: string): Promise<Screen> {

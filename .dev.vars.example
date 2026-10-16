@@ -1,3 +1,14 @@
 # Clave opcional para el panel en desarrollo local.
 # Renombra este archivo a ".dev.vars" para activarla. Sin ella, la API queda abierta.
 ADMIN_KEY=clave-secreta-de-desarrollo
+
+# Imágenes en Backblaze B2 (S3-compatible). Sin estos dos secretos, la subida
+# devuelve 503 y el resto de la app sigue funcionando con URLs.
+# Sácalos de B2 → "Application Keys" (keyID + applicationKey; el segundo solo
+# se muestra una vez). En producción se suben con `cf deploy --secrets-file`.
+B2_KEY_ID=
+B2_APPLICATION_KEY=
+
+# NOTA: el bucket y la región del endpoint S3 NO van aquí. Son valores fijos
+# declarados en `cloudflare.config.ts` (B2_BUCKET / B2_REGION), porque un
+# `bindings.text("...")` con valor literal NO se sobreescribe desde `.dev.vars`.
